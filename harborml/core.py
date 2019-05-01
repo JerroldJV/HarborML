@@ -153,6 +153,11 @@ def start_project(project_root_dir):
     _mkdir_p(_build_relative_path(project_root_dir, _constants.DOCKER_INCLUDES))
     _mkdir_p(_build_relative_path(project_root_dir, _constants.MODEL_PATH))
     _mkdir_p(_build_relative_path(project_root_dir, _constants.SOURCE_PATH))
+    dockerfile = _build_relative_path(
+        _build_relative_path(project_root_dir, _constants.DOCKER_PATH),
+        _constants.DEFAULT_DOCKERFILE_NAME)
+    with open(dockerfile, 'w') as f:
+        f.write(_constants.DEFAULT_DOCKERFILE_CONTENTS)
 
 def train_model(project_root_dir, container_name, train_model_file, model_name = None, save_history = False, 
     stop_container = True):

@@ -13,3 +13,7 @@ DOCKERFILE_EXTENSION = ".dockerfile"
 DEFAULT_CONTAINER_COMMAND = "tail -f /dev/null"
 
 DEFAULT_DIR_IN_CONTAINER = "/var/harborml"
+
+DEFAULT_DOCKERFILE_NAME = "default.dockerfile"
+DEFAULT_DOCKERFILE_CONTENTS = """FROM python
+RUN pip install scikit-learn pandas"""
