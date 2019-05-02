@@ -71,7 +71,7 @@ Our project should now look like this:
     └── src
         └── train_iris.py
 
-Now, we've got everything set to use HarborML to run the the training script in our container and save the results.
+Now, we've got everything set to use HarborML to run the training script in our container and save the results.
 
 To do so, run the following command on the command line:
 ```bash
