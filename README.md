@@ -31,14 +31,14 @@ This will add several folders to your project, so that your project directory lo
 
 Now, we will want to create a new environment and a simple model training script.
 
-Now, create a new file "project/containers/default.dockerfile" with the following contents:
+Now, modify the file "project/containers/default.dockerfile" to include the following contents:
 ```docker
 FROM python
 RUN pip install scikit-learn pandas
 ```
 This dockerfile will be used to create a simple container with python and scikit-learn installed.
 
-Next, download the iris dataset (can be found here https://gist.githubusercontent.com/curran/a08a1080b88344b0c8a7/raw/d546eaee765268bf2f487608c537c05e22e4b221/iris.csv) and save it in the project/data folder.
+Next, download the iris dataset (can be found here https://bit.ly/2ow0oJO) and save it in the project/data folder.
 
 Finally, create a file "project/src/train_iris.py" in the src with the following contents:
 ```python
@@ -71,7 +71,7 @@ Our project should now look like this:
     └── src
         └── train_iris.py
 
-Now, we've got everything set to use HarborML to the the training script in our container and save the results.  Our project should 
+Now, we've got everything set to use HarborML to run the the training script in our container and save the results.
 
 To do so, run the following command on the command line:
 ```bash
