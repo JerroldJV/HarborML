@@ -177,6 +177,16 @@ def start_project(project_root_dir):
     with open(dockerfile, 'w') as f:
         f.write(_constants.DEFAULT_DOCKERFILE_CONTENTS)
 
+def build_container(project_root_dir, container_name):
+    """Inteface for building a specific container.  This is useful for testing container builds work correctly
+
+    Args:
+        project_root_dir: The root directory of the project
+        container_name: The name of the container
+    """
+    _check_project_dir(project_root_dir)
+    return _build_container(project_root_dir, container_name)
+
 def train_model(project_root_dir, container_name, train_model_file, model_name = None, save_history = False, 
     stop_container = True):
     if model_name is None:

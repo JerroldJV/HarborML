@@ -14,6 +14,18 @@ def start_project(dir):
 cli.add_command(start_project)
 
 @click.command()
+@click.argument('container')
+@click.option('--dir', default='./', help='Directory of the project')
+def build_container(container, dir):
+    """Builds a container
+
+    CONTAINER: Name of the container that the training script will run in
+    """
+    return _core.build_container(dir, container)
+
+cli.add_command(build_container)
+
+@click.command()
 @click.argument('train_model_file')
 @click.argument('container')
 @click.option('--dir', default='./', help='Directory of the project')
