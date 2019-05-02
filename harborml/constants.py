@@ -16,4 +16,4 @@ DEFAULT_DIR_IN_CONTAINER = "/var/harborml"
 
 DEFAULT_DOCKERFILE_NAME = "default.dockerfile"
 DEFAULT_DOCKERFILE_CONTENTS = """FROM python
-RUN pip install scikit-learn pandas"""
+RUN pip install scikit-learn pandas flask"""

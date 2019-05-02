@@ -106,14 +106,22 @@ def _copy_directory_to_container(project_root_dir, srcpath, dstpath, container):
     finally:
         _os.remove(tar_file)
 
-def _copy_project_to_container(project_root_dir, container):
+def _copy_project_to_container(project_root_dir, container, include_data = True, include_model = None):
     src_src_path = _build_relative_path(project_root_dir, _constants.SOURCE_PATH)
     src_dst_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.SOURCE_PATH
     _copy_directory_to_container(project_root_dir, src_src_path, src_dst_path, container)
-    
-    data_src_path = _build_relative_path(project_root_dir, _constants.DATA_PATH)
-    data_dst_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.DATA_PATH
-    _copy_directory_to_container(project_root_dir, data_src_path, data_dst_path, container)
+    if include_data:
+        data_src_path = _build_relative_path(project_root_dir, _constants.DATA_PATH)
+        data_dst_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.DATA_PATH
+        _copy_directory_to_container(project_root_dir, data_src_path, data_dst_path, container)
+    if include_model is not None:
+        mdl_src_path = _build_relative_path(
+            _build_relative_path(project_root_dir, _constants.MODEL_PATH),
+            include_model)
+        mdl_dst_path = _build_relative_path(
+            _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, _constants.MODEL_PATH),
+            include_model)
+        _copy_directory_to_container(project_root_dir, mdl_src_path, mdl_dst_path, container)
 
 def _copy_output_to_project(project_root_dir, container, model_name):
     src_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.OUTPUT_PATH
@@ -140,6 +148,16 @@ def _get_train_model_command(train_model_file):
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
+def _get_deploy_model_command(model_api_file):
+    commands = []
+    commands.append('cd "' + _constants.DEFAULT_DIR_IN_CONTAINER + '"')
+    if len(model_api_file) > 3 and model_api_file[-3:] == '.py':
+        api_path = _build_relative_path(_constants.SOURCE_PATH, model_api_file)
+        commands.append('export FLASK_APP="' +  api_path + '"')
+        commands.append('export FLASK_ENV=development')
+        commands.append('flask run')
+    cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
+    return cmd
 
 def start_project(project_root_dir):
     """Creates a new harborml project in the provided directory
@@ -188,4 +206,15 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
         if not stop_container and container != None:
             print("Container still running")
             return container
+    
+def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
+    _check_project_dir(project_root_dir)
+    print("Building container...")
+    image_tag = _build_container(project_root_dir, container_name)
+    print("Starting container...")
+    container = _start_container(image_tag)
+    print("Copying project to container...")
+    _copy_project_to_container(project_root_dir, container, include_data = include_data, include_model = model_name)
+    cmd = _get_deploy_model_command(model_api_file)
+    print("Running command in container: " + cmd)
     

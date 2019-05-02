@@ -1,2 +1,2 @@
 FROM python
-RUN pip install scikit-learn pandas
+RUN pip install scikit-learn pandas flask
