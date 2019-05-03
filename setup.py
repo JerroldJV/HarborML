@@ -10,6 +10,7 @@ setup(
     url='https://github.com/JerroldJV/HarborML',
     author='Jerrold Vincent',
     author_email='JerroldJVincent@gmail.com',
+    package_data={'harborml': ['static/*', 'static/flask/*']},
     install_requires=[
         'click',
         'docker'
