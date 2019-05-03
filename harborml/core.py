@@ -1,6 +1,7 @@
 import docker as _docker
 import errno as _errno
 import os as _os
+import pkg_resources as _pkg_resources
 import random as _random
 import tarfile as _tarfile
 import shutil as _shutil
@@ -24,8 +25,8 @@ def _build_relative_path(project_root_dir, relative_path):
 
 def _check_and_format_file(project_root_dir, relative_path):
     file_path = _build_relative_path(project_root_dir, relative_path)
-    if not _os.path.isfile(project_root_dir + relative_path):
-        raise FileNotFoundError("Provided path is not a valid file")
+    if not _os.path.isfile(file_path):
+        raise FileNotFoundError("Provided path is not a valid file: {}",format(file_path))
     return file_path
 
 def _mkdir_p(path):
@@ -67,11 +68,12 @@ def _build_container(project_root_dir, container_name):
         pass
     return container_tag
 
-def _start_container(image_tag) -> _docker.models.containers.Container:
+def _start_container(image_tag, port_mappings = {}) -> _docker.models.containers.Container:
     client = _docker_client()
     container = client.containers.run(
         image_tag, 
         command = _constants.DEFAULT_CONTAINER_COMMAND,
+        ports = port_mappings,
         detach = True)
     
     container.exec_run("mkdir " + _constants.DEFAULT_DIR_IN_CONTAINER)
@@ -148,14 +150,13 @@ def _get_train_model_command(train_model_file):
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
-def _get_deploy_model_command(model_api_file):
+def _get_flask_deploy_command(flask_path):
     commands = []
     commands.append('cd "' + _constants.DEFAULT_DIR_IN_CONTAINER + '"')
-    if len(model_api_file) > 3 and model_api_file[-3:] == '.py':
-        api_path = _build_relative_path(_constants.SOURCE_PATH, model_api_file)
-        commands.append('export FLASK_APP="' +  api_path + '"')
-        commands.append('export FLASK_ENV=development')
-        commands.append('flask run')
+    api_path = _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, flask_path)
+    commands.append('export FLASK_APP="' +  api_path + '"')
+    commands.append('export FLASK_ENV=development')
+    commands.append('flask run --host=0.0.0.0 >> log.log')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
@@ -222,9 +223,38 @@ def deploy_model(project_root_dir, container_name, model_api_file, model_name, i
     print("Building container...")
     image_tag = _build_container(project_root_dir, container_name)
     print("Starting container...")
-    container = _start_container(image_tag)
+    container = _start_container(image_tag, port_mappings = {5000:5000})
     print("Copying project to container...")
     _copy_project_to_container(project_root_dir, container, include_data = include_data, include_model = model_name)
-    cmd = _get_deploy_model_command(model_api_file)
+    # create a temporary flask folder, and fill it up
+    tmp_flask_root = _build_relative_path(
+        _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH),
+        'flask')
+    dst_flask_root = _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, 'flask')
+    _mkdir_p(tmp_flask_root)
+    _shutil.copy(
+        _pkg_resources.resource_filename('harborml', 'static/flask/app.py'),
+        tmp_flask_root)
+    _shutil.copy(
+        _pkg_resources.resource_filename('harborml', 'static/flask/loader.py'),
+        tmp_flask_root)
+    model_api_module = _os.path.splitext(model_api_file)[0]
+    with open(_build_relative_path(tmp_flask_root, 'loader.py'), 'a') as f:
+        f.write("import sys\n")
+        f.write("sys.path.append('{}')\n".format(
+            _build_relative_path(
+                _constants.DEFAULT_DIR_IN_CONTAINER, 
+                _constants.SOURCE_PATH)))
+        f.write("import {} as model\n".format(model_api_module))
+    # Copy the flask folder to the container
+    _copy_directory_to_container(
+        project_root_dir, 
+        tmp_flask_root, 
+        dst_flask_root,
+        container)
+    _shutil.rmtree(tmp_flask_root)
+    # Run the flask app
+    cmd = _get_flask_deploy_command('flask/app.py')
     print("Running command in container: " + cmd)
-    
+    container.exec_run(cmd, detach = True)
+    return container
