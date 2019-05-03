@@ -213,11 +213,11 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
     finally:
         if stop_container and container != None:
             print("Stopping container...")
-            #container.stop()
+            container.stop()
         if not stop_container and container != None:
             print("Container still running")
             return container
-    
+
 def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
     _check_project_dir(project_root_dir)
     print("Building container...")
