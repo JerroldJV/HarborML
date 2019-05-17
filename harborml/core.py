@@ -141,12 +141,23 @@ def _copy_output_to_project(project_root_dir, container, model_name):
     _os.remove(dst_path + '.tar')
     return dst_path
 
+def _get_file_type(file_name):
+    if len(file_name) > 3 and file_name[-3:].lower() == '.py':
+        return 'python'
+    elif len(file_name) > 2 and file_name[-2:].lower() == '.r':
+        return 'r'
+    return None
+
 def _get_train_model_command(train_model_file):
     commands = []
     commands.append('cd "' + _constants.DEFAULT_DIR_IN_CONTAINER + '"')
-    if len(train_model_file) > 3 and train_model_file[-3:] == '.py':
+    file_type = _get_file_type(train_model_file)
+    if file_type == 'python':
         tmf_path = _build_relative_path(_constants.SOURCE_PATH, train_model_file)
         commands.append('python "' +  tmf_path + '"')
+    elif file_type == 'r':
+        tmf_path = _build_relative_path(_constants.SOURCE_PATH, train_model_file)
+        commands.append('Rscript "' +  tmf_path + '"')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
@@ -158,6 +169,17 @@ def _get_flask_deploy_command(flask_path):
     commands.append('export FLASK_ENV=development')
     commands.append('flask run --host=0.0.0.0 >> log.log')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
+    return cmd
+
+def _get_plumber_deploy_command(plumber_path):
+    commands = []
+    commands.append('cd "' + _constants.DEFAULT_DIR_IN_CONTAINER + '"')
+    api_path = _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, plumber_path)
+    #commands.append('export FLASK_APP="' +  api_path + '"')
+    #commands.append('export FLASK_ENV=development')
+    #commands.append('flask run --host=0.0.0.0 >> log.log')
+    commands.append('R -e \'plumber::plumb(\\"{}\\")$run(host=\\"0.0.0.0\\", port=5000)\' >> log.log'.format(api_path))
+    cmd = 'bash -c  "' + ' && '.join(commands) + '"'
     return cmd
 
 def start_project(project_root_dir):
@@ -206,7 +228,7 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
         print("Running command in container: " + cmd)
         result = container.exec_run(cmd)
         if result.exit_code != 0:
-            raise RuntimeError("Error while running container command: " + result.output)
+            raise RuntimeError("Error while running container command: " + str(result.output))
         print("Copying output back to project")
         output_dir = _copy_output_to_project(project_root_dir, container, model_name)
         print("Run output written to " + output_dir)
@@ -218,14 +240,7 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
             print("Container still running")
             return container
 
-def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
-    _check_project_dir(project_root_dir)
-    print("Building container...")
-    image_tag = _build_container(project_root_dir, container_name)
-    print("Starting container...")
-    container = _start_container(image_tag, port_mappings = {5000:5000})
-    print("Copying project to container...")
-    _copy_project_to_container(project_root_dir, container, include_data = include_data, include_model = model_name)
+def _deploy_flask_model(project_root_dir, model_api_file, container):
     # create a temporary flask folder, and fill it up
     tmp_flask_root = _build_relative_path(
         _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH),
@@ -255,6 +270,58 @@ def deploy_model(project_root_dir, container_name, model_api_file, model_name, i
     _shutil.rmtree(tmp_flask_root)
     # Run the flask app
     cmd = _get_flask_deploy_command('flask/app.py')
+    return cmd
+
+def _deploy_plumber_model(project_root_dir, model_api_file, container):
+    # create a temporary plumber folder, and fill it up
+    tmp_plumber_root = _build_relative_path(
+        _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH),
+        'plumber')
+    dst_plumber_root = _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, 'plumber')
+    _mkdir_p(tmp_plumber_root)
+    _shutil.copy(
+        _pkg_resources.resource_filename('harborml', 'static/plumber/plumber.R'),
+        tmp_plumber_root)
+    _shutil.copy(
+        _pkg_resources.resource_filename('harborml', 'static/plumber/loader.R'),
+        tmp_plumber_root)    
+    with open(_build_relative_path(tmp_plumber_root, 'loader.R'), 'a') as f:
+        # source the file
+        f.write("source('{}')\n".format(
+            _build_relative_path(
+                _build_relative_path(
+                    _constants.DEFAULT_DIR_IN_CONTAINER, 
+                    _constants.SOURCE_PATH),
+                model_api_file)))
+
+    # Copy the plumber folder to the container
+    _copy_directory_to_container(
+        project_root_dir, 
+        tmp_plumber_root, 
+        dst_plumber_root,
+        container)
+    _shutil.rmtree(tmp_plumber_root)
+    # Run the plumber app
+    cmd = _get_plumber_deploy_command('plumber/plumber.R')
+    return cmd
+
+def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
+    _check_project_dir(project_root_dir)
+    print("Building container...")
+    image_tag = _build_container(project_root_dir, container_name)
+    print("Starting container...")
+    container = _start_container(image_tag, port_mappings = {5000:5000})
+    print("Copying project to container...")
+    _copy_project_to_container(project_root_dir, container, include_data = include_data, include_model = model_name)
+    
+    file_type = _get_file_type(model_api_file)
+    if file_type == 'python':
+        cmd = _deploy_flask_model(project_root_dir, model_api_file, container)
+    elif file_type == 'r':
+        cmd = _deploy_plumber_model(project_root_dir, model_api_file, container)
+    else:
+        raise NotImplementedError("No deployment option available for file {}".format(model_api_file))
+
     print("Running command in container: " + cmd)
     container.exec_run(cmd, detach = True)
     return container

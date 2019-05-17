@@ -6,7 +6,7 @@ import json
 
 @app.route('/', methods = ['POST'])
 def predict():
-    return jsonify(model.predict(request.get_json(force=True)))
+    return jsonify(model.api_predict(request.get_json(force=True)))
 
 @app.route('/debug', methods = ['GET'])
 def debug():
@@ -23,4 +23,4 @@ def debug():
 
 @app.route('/debug', methods = ['POST'])
 def debug_post():
-    return jsonify(model.predict(json.loads(request.form['jsondata'])))
+    return jsonify(model.api_predict(json.loads(request.form['jsondata'])))
