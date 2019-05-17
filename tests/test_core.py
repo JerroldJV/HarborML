@@ -62,3 +62,30 @@ def test_train_and_deploy():
         if container is not None:
             container.stop()
 
+def test_r_train_and_deploy():
+    harborml.train_model(
+        testproject_dir,
+        'default_r',
+        'r_train_iris.R',
+        'r_iris_model'
+    )
+    container = None
+    try:
+        container = harborml.deploy_model(
+            './tests/testproject', 
+            'default_r', 
+            'r_deploy_iris.R', 
+            'r_iris_model', 
+            include_data = False)
+
+        import requests
+        import time
+        time.sleep(3) # have to wait for flask to spin up
+        import json
+        r = requests.post('http://localhost:5000', json={"data":[0.0, 0.0, 0.0, 0.0]})
+        assert json.loads(r.text)[0] == "setosa"
+        r = requests.post('http://localhost:5000', json={"data":[10.0, 10.0, 10.0, 10.0]})
+        assert json.loads(r.text)[0] == "virginica"
+    finally:
+        if container is not None:
+            container.stop()
