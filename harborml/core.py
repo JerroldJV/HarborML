@@ -1,5 +1,7 @@
+import configparser as _configparser
 import docker as _docker
 import errno as _errno
+import nginx as _nginx
 import os as _os
 import pkg_resources as _pkg_resources
 import random as _random
@@ -49,32 +51,35 @@ def _build_container(project_root_dir, container_name):
     container_path = _check_and_format_file(project_root_dir, _constants.DOCKER_PATH + '/' + container_dockerfile)
     container_tag = _docker_image_tag(container_name)
     tmp_build_path = _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH + '/' + container_name)
-    tmp_container_path = _build_relative_path(tmp_build_path, container_dockerfile)
+    #tmp_container_path = _build_relative_path(tmp_build_path, container_dockerfile)
     docker_includes_path = _build_relative_path(project_root_dir, _constants.DOCKER_INCLUDES)
     try:
         _os.mkdir(tmp_build_path)
         _shutil.copy(container_path, tmp_build_path)
-        _shutil.copytree(docker_includes_path, _build_relative_path(tmp_build_path, _constants.DOCKER_INCLUDES))
+        _shutil.copytree(docker_includes_path, _build_relative_path(tmp_build_path, 'includes'))
         client = _docker_client()
-        with open(tmp_container_path, 'rb') as f:
-            client.images.build(
-                fileobj = f,
-                path = tmp_build_path,
-                tag = container_tag,
-                quiet = False
-            )
+        #with open(tmp_container_path, 'rb') as f:
+        client.images.build(
+            #fileobj = f,
+            path = tmp_build_path,
+            dockerfile = container_dockerfile,
+            tag = container_tag,
+            quiet = False
+        )
     finally:
-        _shutil.rmtree(tmp_build_path)
+        _shutil.rmtree(tmp_build_path, ignore_errors=True)
         pass
     return container_tag
 
-def _start_container(image_tag, port_mappings = {}) -> _docker.models.containers.Container:
+def _start_container(image_tag, port_mappings = {}, hostname = None) -> _docker.models.containers.Container:
     client = _docker_client()
     container = client.containers.run(
         image_tag, 
         command = _constants.DEFAULT_CONTAINER_COMMAND,
         ports = port_mappings,
-        detach = True)
+        detach = True,
+        #remove = True,
+        hostname = hostname)
     
     container.exec_run("mkdir " + _constants.DEFAULT_DIR_IN_CONTAINER)
     container.exec_run(
@@ -182,6 +187,17 @@ def _get_plumber_deploy_command(plumber_path):
     cmd = 'bash -c  "' + ' && '.join(commands) + '"'
     return cmd
 
+def _random_hex(num_digits):
+    return ''.join(_random.choice('0123456789abcdef') for n in range(num_digits))
+
+def _get_project_config(project_root_dir):
+    config = _configparser.ConfigParser()
+    config.read(
+        _build_relative_path(
+            project_root_dir,
+            _constants.INI_PATH))
+    return config
+
 def start_project(project_root_dir):
     """Creates a new harborml project in the provided directory
 
@@ -199,6 +215,25 @@ def start_project(project_root_dir):
         _constants.DEFAULT_DOCKERFILE_NAME)
     with open(dockerfile, 'w') as f:
         f.write(_constants.DEFAULT_DOCKERFILE_CONTENTS)
+    
+    # copy the default nginx.conf to the docker includes
+    _shutil.copy(
+        _pkg_resources.resource_filename('harborml', 'static/nginx/nginx.conf'),
+        _build_relative_path(project_root_dir, _constants.DOCKER_INCLUDES))
+
+    nginxdockerfile = _build_relative_path(
+        _build_relative_path(project_root_dir, _constants.DOCKER_PATH),
+        _constants.DEFAULT_NGINX_NAME)
+    with open(nginxdockerfile + ".dockerfile", 'w') as f:
+        f.write(_constants.DEFAULT_NGINX_CONTENTS)
+    
+    # build default config
+    config = _configparser.ConfigParser()
+    config['DEFAULT'] = {
+        'PROJECT_ID': _random_hex(32)
+    }
+    with open(_build_relative_path(project_root_dir, _constants.INI_PATH), 'w') as configfile:
+        config.write(configfile)
 
 def build_container(project_root_dir, container_name):
     """Inteface for building a specific container.  This is useful for testing container builds work correctly
@@ -235,7 +270,7 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
     finally:
         if stop_container and container != None:
             print("Stopping container...")
-            container.stop()
+            container.stop(timeout = 0)
         if not stop_container and container != None:
             print("Container still running")
             return container
@@ -305,12 +340,87 @@ def _deploy_plumber_model(project_root_dir, model_api_file, container):
     cmd = _get_plumber_deploy_command('plumber/plumber.R')
     return cmd
 
+def _get_docker_name(project_root_dir, model_name):
+    proj_id = _get_project_config(project_root_dir)['DEFAULT']['PROJECT_ID']
+    return "deploy-{}-{}".format(proj_id, model_name)
+
+def _deploy_reverse_proxy(project_root_dir):
+    d_client = _docker_client()
+    base_name = _get_docker_name(project_root_dir, '')
+    new_name = "reverse_proxy-" + base_name
+    already_running = d_client.containers.list(all=True, filters={'name':new_name})
+    if len(already_running) > 0:
+        if already_running[0].status == 'running':
+            print("Reverse proxy already running")
+            return already_running[0]
+        else:
+            already_running[0].remove()
+
+    print("Building reverse proxy container...")
+    image_tag = _build_container(project_root_dir, _constants.DEFAULT_NGINX_NAME)
+    print("Starting reverse proxy container...")
+    rev_proxy = _start_container(image_tag, port_mappings = {5000:5000})
+    d_client.api.rename(rev_proxy.id, new_name)
+    return rev_proxy
+
+def _get_current_deploy_version(project_root_dir, model_name):
+    d_client = _docker_client()
+    base_name = _get_docker_name(project_root_dir, model_name)
+    deploy_container_names = [x.name for x in d_client.containers.list(all=True, filters = {'name':base_name})]
+    version = -1
+    for n in deploy_container_names:
+        potential_id = int(n.split("-")[-1])
+        if version < potential_id:
+            version = potential_id
+    return version
+
+def _copy_down_nginx_conf(project_root_dir, container):
+    src_path = _constants.NGINX_CONF_IN_CONTAINER_PATH
+    dst_path = _build_relative_path(
+        _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH),
+        _random_file_name())
+        
+    _mkdir_p(dst_path)
+    with open(dst_path + '.tar', 'wb') as f:
+        bits, _ = container.get_archive(src_path)
+        for chunk in bits:
+            f.write(chunk)
+    
+    with _tarfile.open(dst_path + '.tar') as tf:
+        tf.extractall(dst_path)
+    _os.remove(dst_path + '.tar')
+    return dst_path
+
+def _edit_nginx_entry(project_root_dir, rev_proxy_container, hostname, ip_port):
+    # TODO: actually make the changes to the nginx config, save them, and push them!
+    conf_dir = _copy_down_nginx_conf(project_root_dir, rev_proxy_container)
+    try:
+        conf_file = _build_relative_path(conf_dir,'nginx.conf')
+        c = _nginx.loadf(conf_file)
+        http = c.filter('Http')[0]
+        # check for existing upstream entry for item, edit as needed
+        upstream = _nginx.Upstream(hostname)
+        upstream.add(_nginx.Key('server', ip_port))
+        http.add(
+            upstream
+        )
+        print(_nginx.dumps(c))
+    finally:
+        _shutil.rmtree(conf_dir, ignore_errors=True)
+
 def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
+    d_client = _docker_client()
     _check_project_dir(project_root_dir)
     print("Building container...")
     image_tag = _build_container(project_root_dir, container_name)
     print("Starting container...")
-    container = _start_container(image_tag, port_mappings = {5000:5000})
+    old_version = _get_current_deploy_version(project_root_dir, model_name)
+    print("Deployment version {}".format(old_version + 1))
+    base_name = _get_docker_name(project_root_dir, model_name)
+    new_name = base_name + "-" + str(old_version + 1)
+    old_name = base_name + "-" + str(old_version)
+    container = _start_container(image_tag, hostname = new_name)
+    d_client.api.rename(container.id, new_name)
     print("Copying project to container...")
     _copy_project_to_container(project_root_dir, container, include_data = include_data, include_model = model_name)
     
@@ -324,4 +434,10 @@ def deploy_model(project_root_dir, container_name, model_api_file, model_name, i
 
     print("Running command in container: " + cmd)
     container.exec_run(cmd, detach = True)
+
+    rev_proxy = _deploy_reverse_proxy(project_root_dir)
+    
+    api_ip_address = d_client.api.inspect_container(container.id)['NetworkSettings']['IPAddress']
+    _edit_nginx_entry(project_root_dir, rev_proxy, new_name, api_ip_address + ':5000')
+
     return container
