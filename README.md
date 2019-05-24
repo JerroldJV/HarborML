@@ -132,7 +132,7 @@ If you want to test programatically accessing the API, here is some example code
 ```python
 import requests
 import json
-r = requests.post('http://localhost:5000', json=[0.0, 0.0, 0.0, 0.0])
+r = requests.post('http://localhost:5000/iris_model/', json=[0.0, 0.0, 0.0, 0.0])
 print(r.text)
 ```
 

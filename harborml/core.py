@@ -6,6 +6,7 @@ import os as _os
 import pkg_resources as _pkg_resources
 import random as _random
 import tarfile as _tarfile
+import time as _time
 import shutil as _shutil
 
 from . import constants as _constants
@@ -108,7 +109,9 @@ def _copy_directory_to_container(project_root_dir, srcpath, dstpath, container):
     tar_file = _tar_it(project_root_dir, srcpath)
     try:
         data = open(tar_file, 'rb').read()
-        container.exec_run('mkdir -p "' + dstpath + '"')
+        container.exec_run('mkdir -p "' + dstpath + '"', detach = True)
+        # introducing potential race condition :::::((((((  but the above exec fails sometimes for no reason and hangs
+        _time.sleep(.1)
         container.put_archive(dstpath, data)
     finally:
         _os.remove(tar_file)
@@ -376,9 +379,10 @@ def _get_current_deploy_version(project_root_dir, model_name):
 
 def _copy_down_nginx_conf(project_root_dir, container):
     src_path = _constants.NGINX_CONF_IN_CONTAINER_PATH
+    rng_file_name = _random_file_name()
     dst_path = _build_relative_path(
         _build_relative_path(project_root_dir, _constants.TMP_BUILD_PATH),
-        _random_file_name())
+        rng_file_name)
         
     _mkdir_p(dst_path)
     with open(dst_path + '.tar', 'wb') as f:
@@ -391,20 +395,61 @@ def _copy_down_nginx_conf(project_root_dir, container):
     _os.remove(dst_path + '.tar')
     return dst_path
 
-def _edit_nginx_entry(project_root_dir, rev_proxy_container, hostname, ip_port):
-    # TODO: actually make the changes to the nginx config, save them, and push them!
+def _copy_up_nginx_conf(project_root_dir, conf_dir, container):
+    _copy_directory_to_container(project_root_dir, conf_dir, 'tmp/conf/', container)
+    container.exec_run('cp {} {}'.format('tmp/conf/nginx.conf', _constants.NGINX_CONF_IN_CONTAINER_PATH), detach = True)
+    _time.sleep(.1)
+
+def _edit_nginx_entry(project_root_dir, rev_proxy_container, model_name, hostname, ip_port, old_hostname = None):
     conf_dir = _copy_down_nginx_conf(project_root_dir, rev_proxy_container)
     try:
         conf_file = _build_relative_path(conf_dir,'nginx.conf')
         c = _nginx.loadf(conf_file)
         http = c.filter('Http')[0]
+
+        endpoint_url = '/{}/'.format(model_name)
         # check for existing upstream entry for item, edit as needed
+        if old_hostname is not None:
+            for ups in http.filter('Upstream'):
+                if ups.value == old_hostname:
+                    http.remove(ups)
+        # create new hostname entry
         upstream = _nginx.Upstream(hostname)
         upstream.add(_nginx.Key('server', ip_port))
         http.add(
             upstream
         )
-        print(_nginx.dumps(c))
+        # check for existing location entry and remove if present
+        servers = http.filter('Server')
+        add2http = False
+        if len(servers) > 0:
+            server = servers[0]
+            for loc in server.filter('Location'):
+                if loc.value == endpoint_url:
+                    server.remove(loc)
+        else:
+            add2http = True
+            server = _nginx.Server()
+            server.add(_nginx.Key('listen', '5000'))
+        
+        location = _nginx.Location(endpoint_url)
+        location.add(
+            _nginx.Key('proxy_pass', 'http://{}/'.format(hostname)),
+            _nginx.Key('proxy_redirect', 'off'),
+            _nginx.Key('proxy_set_header', 'Host $host'),
+            _nginx.Key('proxy_set_header', 'X-Real-IP $remote_addr'),
+            _nginx.Key('proxy_set_header', 'X-Forwarded-For $proxy_add_x_forwarded_for'),
+            _nginx.Key('proxy_set_header', 'X-Forwarded-Host $server_name')
+        )
+
+        server.add(location)
+        if add2http:
+            http.add(server)
+        _nginx.dumpf(c, conf_file)
+        _copy_up_nginx_conf(project_root_dir, conf_dir, rev_proxy_container)
+        # reload nginx on server
+        rev_proxy_container.exec_run('/usr/sbin/nginx', detach = True)
+        rev_proxy_container.exec_run('/usr/sbin/nginx -s reload', detach = True)
     finally:
         _shutil.rmtree(conf_dir, ignore_errors=True)
 
@@ -436,8 +481,18 @@ def deploy_model(project_root_dir, container_name, model_api_file, model_name, i
     container.exec_run(cmd, detach = True)
 
     rev_proxy = _deploy_reverse_proxy(project_root_dir)
-    
     api_ip_address = d_client.api.inspect_container(container.id)['NetworkSettings']['IPAddress']
-    _edit_nginx_entry(project_root_dir, rev_proxy, new_name, api_ip_address + ':5000')
-
+    _edit_nginx_entry(project_root_dir, rev_proxy, model_name, new_name, api_ip_address + ':5000', old_hostname=old_name)
+    #TODO: add test for making sure new endpoint is up?
+    # Kill old container
+    old_container = d_client.containers.list(all=True, filters={'name':old_name})
+    if len(old_container) > 0:
+        old_container[0].stop(timeout = 0)
     return container
+
+def undeploy_reverse_proxy(project_root_dir):
+    d_client = _docker_client()
+    base_name = _get_docker_name(project_root_dir, '')
+    new_name = "reverse_proxy-" + base_name
+    already_running = d_client.containers.list(all=True, filters={'name':new_name})
+    already_running[0].stop(timeout = 0)
