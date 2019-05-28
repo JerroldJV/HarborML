@@ -60,5 +60,26 @@ def deploy_model(model_scorer, container, dir, model_name, include_data):
 
 cli.add_command(deploy_model)
 
+@click.command()
+@click.argument('model_name')
+@click.option('--dir', default='./', help='Directory of the project')
+def undeploy_model(model_name, dir):
+    """Undeploys a models API endpoint
+
+    MODEL_NAME: Name of the model
+    """
+    _core.undeploy_single_model(dir, model_name)
+
+cli.add_command(undeploy_model)
+
+@click.command()
+@click.option('--dir', default='./', help='Directory of the project')
+def undeploy_all(dir):
+    """Undeploys all API endpoints and the reverse proxy server for a project
+    """
+    _core.undeploy_all(dir)
+
+cli.add_command(undeploy_all)
+
 if __name__ == '__main__':
     cli()

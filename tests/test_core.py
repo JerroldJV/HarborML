@@ -20,7 +20,7 @@ def setup_module(module):
     harborml.start_project(testproject_dir)
 
 def teardown_module(module):
-    harborml.undeploy_reverse_proxy(testproject_dir)
+    harborml.undeploy_all(testproject_dir)
     if os.path.isdir('./tests/testproject/model'):
         shutil.rmtree('./tests/testproject/model')
     if os.path.isdir('./tests/testproject/tmp'):
