@@ -490,9 +490,27 @@ def deploy_model(project_root_dir, container_name, model_api_file, model_name, i
         old_container[0].stop(timeout = 0)
     return container
 
-def undeploy_reverse_proxy(project_root_dir):
+def undeploy_single_model(project_root_dir, model_name):
+    d_client = _docker_client()
+    _check_project_dir(project_root_dir)
+    old_version = _get_current_deploy_version(project_root_dir, model_name)
+    if old_version == -1:
+        print(f"No currently running endpoint for model {model_name}")
+        return
+    print("Undeploying {} version {}".format(model_name, old_version))
+    base_name = _get_docker_name(project_root_dir, model_name)
+    old_name = base_name + "-" + str(old_version)
+    old_container = d_client.containers.list(all=True, filters={'name':old_name})
+    if len(old_container) == 0:
+        print(f"No currently running endpoint for model {model_name}")
+        return
+    old_container.stop(timeout = 0)
+
+def undeploy_all(project_root_dir):
     d_client = _docker_client()
     base_name = _get_docker_name(project_root_dir, '')
-    new_name = "reverse_proxy-" + base_name
-    already_running = d_client.containers.list(all=True, filters={'name':new_name})
-    already_running[0].stop(timeout = 0)
+    # base_name will be deploy-PROJECTID
+    already_running = d_client.containers.list(filters={'name':base_name})
+    print("Undeploying all models in project")
+    for con in already_running:
+        con.stop(timeout=0)

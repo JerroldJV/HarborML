@@ -20,11 +20,13 @@ def setup_module(module):
     harborml.start_project(testproject_dir)
 
 def teardown_module(module):
-    harborml.undeploy_reverse_proxy(testproject_dir)
+    harborml.undeploy_all(testproject_dir)
     if os.path.isdir('./tests/testproject/model'):
         shutil.rmtree('./tests/testproject/model')
     if os.path.isdir('./tests/testproject/tmp'):
         shutil.rmtree('./tests/testproject/tmp')
+    if os.path.isfile('./tests/testproject/project.ini'):
+        os.remove('./tests/testproject/project.ini')
 
 def test_build():
     harborml.build_container(testproject_dir, 'default')
