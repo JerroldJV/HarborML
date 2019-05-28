@@ -40,7 +40,7 @@ This dockerfile will be used to create a simple container with python and scikit
 
 Next, download the iris dataset (can be found here https://bit.ly/2ow0oJO) and save it in the project/data/iris folder.
 
-Finally, create a file "project/src/train_iris.py" in the src with the following contents:
+Finally, create a file "project/src/train_iris_model.py" in the src with the following contents:
 ```python
 import pandas as pd
 import sklearn
@@ -70,22 +70,22 @@ Our project should now look like this:
     │       └── iris.csv
     ├── model             
     └── src
-        └── train_iris.py
+        └── train_iris_model.py
 
 Now, we've got everything set to use HarborML to run the training script in our container and save the results.
 
 To do so, run the following command on the command line:
 ```bash
-python -m harborml train-model --model_name iris_model train_iris.py default
+python -m harborml train-model train_iris_model.py default
 ```
 You should see the following output:
 ```
 Building container...
 Starting container...
 Copying project to container...
-Running command in container: bash -c  "cd \"/var/harborml\" && python \"train_iris.py\""
+Running command in container: bash -c  "cd \"/var/harborml\" && python \"train_iris_model.py\""
 Copying output back to project
-Run output written to .\tests\testproject\/model/train_iris
+Run output written to ./tests/testproject/model/iris_model
 Stopping container...
 ```
 And finally, there should be a new folder project/model containing our trained model!
@@ -99,7 +99,7 @@ And finally, there should be a new folder project/model containing our trained m
 
 Next, we will want to deploy the model via a REST API.  To do so, we need to write a function to "score" new data.
 
-In the "src" folder, create a new file "deploy_iris.py" with the following contents:
+In the "src" folder, create a new file "deploy_iris_model.py" with the following contents:
 ```python
 import pickle
 
@@ -115,17 +115,17 @@ def predict(data):
     project
     ├── ...
     └── src
-        ├── deploy_iris.py      # this is our new file
-        └── train_iris.py
+        ├── deploy_iris_model.py      # this is our new file
+        └── train_iris_model.py
 
 
 Now we have everything we need to deploy a model as a REST API - HarborML takes care of the rest.  As long as there is a python file with a "predict" function inside HarborML can deploy it!  To deploy it, run the following command:
 
 ```bash
-python -m harborml deploy-model --model_name iris_model deploy_iris.py default
+python -m harborml deploy-model deploy_iris_model.py default
 ```
 
-Now we have our model available as a REST API locally.  To quickly test the API, navigate to http://localhost:5000/debug .  In the text area, enter in [0.0, 0.0, 0.0, 0.0], and press "Test".  You should see "setosa" appear.  What just happened is that HarborML deployed your model in a Flask API on your local machine on port 5000.  HarborML then provided an easy to use "debug" link that allowed you to test your API in the web browser.  The data you entered in was converted to JSON, passed to the Flask API, decoded into a python object, and passed to the "predict" function in deploy_iris.py.  The results were then coded into JSON and returned to your web browser!
+Now we have our model available as a REST API locally.  To quickly test the API, navigate to http://localhost:5000/iris_model/debug .  In the text area, enter in [0.0, 0.0, 0.0, 0.0], and press "Test".  You should see "setosa" appear.  What just happened is that HarborML deployed your model in a Flask API on your local machine on port 5000.  HarborML then provided an easy to use "debug" link that allowed you to test your API in the web browser.  The data you entered in was converted to JSON, passed to the Flask API, decoded into a python object, and passed to the "predict" function in deploy_iris.py.  The results were then coded into JSON and returned to your web browser!
 
 If you want to test programatically accessing the API, here is some example code you can run after to API is running:
 
@@ -139,5 +139,5 @@ print(r.text)
 After you are done with the API, make sure to shut down your deployed models.
 
 ```bash
-python -m harborml deploy-model undeploy_all
+python -m harborml undeploy-all
 ```
