@@ -38,7 +38,7 @@ RUN pip install scikit-learn pandas
 ```
 This dockerfile will be used to create a simple container with python and scikit-learn installed.
 
-Next, download the iris dataset (can be found here https://bit.ly/2ow0oJO) and save it in the project/data folder.
+Next, download the iris dataset (can be found here https://bit.ly/2ow0oJO) and save it in the project/data/iris folder.
 
 Finally, create a file "project/src/train_iris.py" in the src with the following contents:
 ```python
@@ -47,7 +47,7 @@ import sklearn
 from sklearn.ensemble import RandomForestClassifier
 
 # Load data
-iris = pd.read_csv('data/iris.csv')
+iris = pd.read_csv('data/iris/iris.csv')
 # Train random forest model
 clf = RandomForestClassifier()
 X = iris[['sepal_length', 'sepal_width', 'petal_length', 'petal_width']]
@@ -66,7 +66,8 @@ Our project should now look like this:
     │   ├── includes
     │   └── default.dockerfile
     ├── data                
-    │   └── iris.csv
+    │   └── iris
+    │       └── iris.csv
     ├── model             
     └── src
         └── train_iris.py
@@ -93,8 +94,7 @@ And finally, there should be a new folder project/model containing our trained m
     ├── ...
     ├── model       
     │   └── iris_model
-    │       └── output
-    │           └── iris.pkl        # this is the pickle file we wrote in the training script
+    │       └── iris.pkl            # this is the pickle file we wrote in the training script
     └── ...
 
 Next, we will want to deploy the model via a REST API.  To do so, we need to write a function to "score" new data.
@@ -104,7 +104,7 @@ In the "src" folder, create a new file "deploy_iris.py" with the following conte
 import pickle
 
 # Load our model
-with open('model/iris_model/output/iris.pkl', 'rb') as f:
+with open('model/iris_model/iris.pkl', 'rb') as f:
     mdl = pickle.load(f)
 
 # Receive data and return the scored result
@@ -136,12 +136,8 @@ r = requests.post('http://localhost:5000/iris_model/', json=[0.0, 0.0, 0.0, 0.0]
 print(r.text)
 ```
 
-After you are done with the API, make sure to shut down your container.
+After you are done with the API, make sure to shut down your deployed models.
 
 ```bash
-# get the container ID
-docker ps
-
-# shut down the container
-docker stop [CONTAINER_ID]
+python -m harborml deploy-model undeploy_all
 ```

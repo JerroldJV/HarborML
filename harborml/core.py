@@ -133,7 +133,28 @@ def _copy_project_to_container(project_root_dir, container, include_data = True,
             include_model)
         _copy_directory_to_container(project_root_dir, mdl_src_path, mdl_dst_path, container)
 
-def _copy_output_to_project(project_root_dir, container, model_name):
+def _copy_output_to_project(project_root_dir, container, relative_target_directory):
+    src_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.OUTPUT_PATH
+    dst_path = _build_relative_path(project_root_dir, relative_target_directory)
+    _mkdir_p(dst_path)
+    with open(dst_path + '.tar', 'wb') as f:
+        bits, _ = container.get_archive(src_path)
+        for chunk in bits:
+            f.write(chunk)
+    
+    with _tarfile.open(dst_path + '.tar') as tf:
+        tf.extractall(dst_path)
+    
+    source_dir = _build_relative_path(dst_path, 'output')
+    for filename in _os.listdir(source_dir):
+        srcfile = _build_relative_path(source_dir, filename)
+        tgtfile = _build_relative_path(dst_path, filename)
+        _shutil.move(srcfile, tgtfile)
+    _shutil.rmtree(source_dir)
+    _os.remove(dst_path + '.tar')
+    return dst_path
+
+def _copy_data_to_project(project_root_dir, container, model_name):
     src_path = _constants.DEFAULT_DIR_IN_CONTAINER + '/' + _constants.OUTPUT_PATH
     dst_path = _build_relative_path(
         _build_relative_path(project_root_dir, _constants.MODEL_PATH),
@@ -156,6 +177,30 @@ def _get_file_type(file_name):
         return 'r'
     return None
 
+def _extract_refresh_data_name(data_refresh_file):
+    filename = _os.path.basename(data_refresh_file)
+    filename = filename.split('.')[0]
+    filename_split = filename.split('_')
+    if len(filename_split) <= 1 or filename_split[0].lower() not in _constants.REFRESH_FILE_SUFFIXES:
+        raise IOError("Cannot extract valid dataset_name from file, please manually provide dataset_name")
+    return '_'.join(filename_split[1:]).lower()
+
+def _extract_train_model_name(train_model_file):
+    filename = _os.path.basename(train_model_file)
+    filename = filename.split('.')[0]
+    filename_split = filename.split('_')
+    if len(filename_split) <= 1 or filename_split[0].lower() not in _constants.TRAIN_FILE_SUFFIXES:
+        raise IOError("Cannot extract valid model_name from file, please manually provide model_name")
+    return '_'.join(filename_split[1:]).lower()
+    
+def _extract_deploy_model_name(model_api_file):
+    filename = _os.path.basename(model_api_file)
+    filename = filename.split('.')[0]
+    filename_split = filename.split('_')
+    if len(filename_split) <= 1 or filename_split[0].lower() not in _constants.DEPLOY_FILE_SUFFIXES:
+        raise IOError("Cannot extract valid model_name from file, please manually provide model_name")
+    return '_'.join(filename_split[1:]).lower()
+
 def _get_train_model_command(train_model_file):
     commands = []
     commands.append('cd "' + _constants.DEFAULT_DIR_IN_CONTAINER + '"')
@@ -168,6 +213,9 @@ def _get_train_model_command(train_model_file):
         commands.append('Rscript "' +  tmf_path + '"')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
+
+def _get_refresh_data_command(data_refresh_file):
+    return _get_train_model_command(data_refresh_file)
 
 def _get_flask_deploy_command(flask_path):
     commands = []
@@ -251,8 +299,7 @@ def build_container(project_root_dir, container_name):
 def train_model(project_root_dir, container_name, train_model_file, model_name = None, save_history = False, 
     stop_container = True):
     if model_name is None:
-        model_name, _ = _os.path.splitext(train_model_file)
-        model_name = model_name.replace('/', '-')
+        model_name = _extract_train_model_name(train_model_file)
 
     _check_project_dir(project_root_dir)
     print("Building container...")
@@ -268,7 +315,7 @@ def train_model(project_root_dir, container_name, train_model_file, model_name =
         if result.exit_code != 0:
             raise RuntimeError("Error while running container command: " + str(result.output))
         print("Copying output back to project")
-        output_dir = _copy_output_to_project(project_root_dir, container, model_name)
+        output_dir = _copy_output_to_project(project_root_dir, container, _build_relative_path(_constants.MODEL_PATH, model_name))
         print("Run output written to " + output_dir)
     finally:
         if stop_container and container != None:
@@ -453,7 +500,9 @@ def _edit_nginx_entry(project_root_dir, rev_proxy_container, model_name, hostnam
     finally:
         _shutil.rmtree(conf_dir, ignore_errors=True)
 
-def deploy_model(project_root_dir, container_name, model_api_file, model_name, include_data = False):
+def deploy_model(project_root_dir, container_name, model_api_file, model_name = None, include_data = False):
+    if model_name is None:
+        model_name = _extract_deploy_model_name(model_api_file)
     d_client = _docker_client()
     _check_project_dir(project_root_dir)
     print("Building container...")
@@ -514,3 +563,33 @@ def undeploy_all(project_root_dir):
     print("Undeploying all models in project")
     for con in already_running:
         con.stop(timeout=0)
+
+def refresh_data(project_root_dir, container_name, data_refresh_file, dataset_name = None, stop_container = True):
+    if dataset_name is None:
+        dataset_name = _extract_refresh_data_name(data_refresh_file)
+
+    _check_project_dir(project_root_dir)
+    print("Building container...")
+    image_tag = _build_container(project_root_dir, container_name)
+    print("Starting container...")
+    container = _start_container(image_tag)
+    try:
+        print("Copying project to container...")
+        _copy_project_to_container(project_root_dir, container)
+        cmd = _get_refresh_data_command(data_refresh_file)
+        print("Running command in container: " + cmd)
+        result = container.exec_run(cmd)
+        if result.exit_code != 0:
+            raise RuntimeError("Error while running container command: " + str(result.output))
+        print("Copying output back to project")
+        
+        output_dir = _copy_output_to_project(project_root_dir, container, _build_relative_path(_constants.DATA_PATH, dataset_name))
+        print("Run output written to " + output_dir)
+    finally:
+        if stop_container and container != None:
+            print("Stopping container...")
+            container.stop(timeout = 0)
+        if not stop_container and container != None:
+            print("Container still running")
+            return container
+

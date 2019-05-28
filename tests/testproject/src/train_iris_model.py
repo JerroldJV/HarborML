@@ -2,7 +2,7 @@ import pandas as pd
 import sklearn
 from sklearn.ensemble import RandomForestClassifier
 
-iris = pd.read_csv('data/iris.csv')
+iris = pd.read_csv('data/iris/iris.csv')
 clf = RandomForestClassifier()
 
 X = iris[['sepal_length', 'sepal_width', 'petal_length', 'petal_width']]
