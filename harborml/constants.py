@@ -25,3 +25,7 @@ RUN apk update && apk add bash
 COPY includes/nginx.conf /etc/nginx/nginx.conf
 """
 NGINX_CONF_IN_CONTAINER_PATH = "/etc/nginx/nginx.conf"
+
+REFRESH_FILE_SUFFIXES = set(['refresh', 'prepare'])
+TRAIN_FILE_SUFFIXES = set(['train', 'fit'])
+DEPLOY_FILE_SUFFIXES = set(['deploy'])

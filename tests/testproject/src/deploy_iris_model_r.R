@@ -1,6 +1,6 @@
 library(randomForest)
 
-rf <- readRDS('model/r_iris_model/output/iris_rf.RDS')
+rf <- readRDS('model/iris_model_r/iris_rf.RDS')
 
 api_predict <- function(data){
     df <- data.frame(
