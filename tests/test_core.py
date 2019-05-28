@@ -25,6 +25,8 @@ def teardown_module(module):
         shutil.rmtree('./tests/testproject/model')
     if os.path.isdir('./tests/testproject/tmp'):
         shutil.rmtree('./tests/testproject/tmp')
+    if os.path.isfile('./tests/testproject/project.ini'):
+        os.remove('./tests/testproject/project.ini')
 
 def test_build():
     harborml.build_container(testproject_dir, 'default')
