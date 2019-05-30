@@ -87,7 +87,7 @@ cli.add_command(undeploy_all)
 @click.argument('container')
 @click.option('--dir', default='./', help='Directory of the project')
 @click.option('--dataset_name', default='', help='Name of the dataset')
-def refresh_data(data_refresh_file, container, dir, model_name):
+def refresh_data(data_refresh_file, container, dir, dataset_name):
     """Refreshes data and saves to data folder
 
     data_refresh_file: Name/path of file in src folder that will refresh the data and save the results to the "output" folder
