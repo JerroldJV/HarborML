@@ -81,5 +81,24 @@ def undeploy_all(dir):
 
 cli.add_command(undeploy_all)
 
+
+@click.command()
+@click.argument('data_refresh_file')
+@click.argument('container')
+@click.option('--dir', default='./', help='Directory of the project')
+@click.option('--dataset_name', default='', help='Name of the dataset')
+def refresh_data(data_refresh_file, container, dir, model_name):
+    """Refreshes data and saves to data folder
+
+    data_refresh_file: Name/path of file in src folder that will refresh the data and save the results to the "output" folder
+
+    CONTAINER: Name of the container that the training script will run in
+    """
+    if dataset_name == '': 
+        dataset_name = None
+    _core.refresh_data(dir, container, data_refresh_file, dataset_name = dataset_name)
+
+cli.add_command(refresh_data)
+
 if __name__ == '__main__':
     cli()
