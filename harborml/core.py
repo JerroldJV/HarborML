@@ -211,7 +211,7 @@ def _get_train_model_command(train_model_file):
     elif file_type == 'r':
         tmf_path = _build_relative_path(_constants.SOURCE_PATH, train_model_file)
         commands.append('Rscript "' +  tmf_path + '"')
-    cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
+    cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '" >> log.log'
     return cmd
 
 def _get_refresh_data_command(data_refresh_file):
