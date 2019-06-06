@@ -207,10 +207,10 @@ def _get_train_model_command(train_model_file):
     file_type = _get_file_type(train_model_file)
     if file_type == 'python':
         tmf_path = _build_relative_path(_constants.SOURCE_PATH, train_model_file)
-        commands.append('python "' +  tmf_path + '" |& tee -a log.log')
+        commands.append('python "' +  tmf_path + '" |& tee -a ./output/log.log')
     elif file_type == 'r':
         tmf_path = _build_relative_path(_constants.SOURCE_PATH, train_model_file)
-        commands.append('Rscript "' +  tmf_path + '" |& tee -a log.log')
+        commands.append('Rscript "' +  tmf_path + '" |& tee -a ./output/log.log')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
@@ -223,7 +223,7 @@ def _get_flask_deploy_command(flask_path):
     api_path = _build_relative_path(_constants.DEFAULT_DIR_IN_CONTAINER, flask_path)
     commands.append('export FLASK_APP="' +  api_path + '"')
     commands.append('export FLASK_ENV=development')
-    commands.append('flask run --host=0.0.0.0 |& tee -a log.log')
+    commands.append('flask run --host=0.0.0.0 |& tee -a ./output/log.log')
     cmd = 'bash -c  "' + ' && '.join(commands).replace('"', '\\"') + '"'
     return cmd
 
@@ -234,7 +234,7 @@ def _get_plumber_deploy_command(plumber_path):
     #commands.append('export FLASK_APP="' +  api_path + '"')
     #commands.append('export FLASK_ENV=development')
     #commands.append('flask run --host=0.0.0.0 >> log.log')
-    commands.append('R -e \'plumber::plumb(\\"{}\\")$run(host=\\"0.0.0.0\\", port=5000)\' |& tee -a log.log'.format(api_path))
+    commands.append('R -e \'plumber::plumb(\\"{}\\")$run(host=\\"0.0.0.0\\", port=5000)\' |& tee -a ./output/log.log'.format(api_path))
     cmd = 'bash -c  "' + ' && '.join(commands) + '"'
     return cmd
 
