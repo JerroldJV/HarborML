@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='harborml',
-    version='0.1',
+    version='0.1.1',
     packages=find_packages(exclude=['tests*']),
     license='GPLv3',
     description='Framework for building, training, and deploying machine learning and AI solutions via containers',
