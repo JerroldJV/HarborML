@@ -143,7 +143,26 @@ def _copy_output_to_project(project_root_dir, container, relative_target_directo
             f.write(chunk)
     
     with _tarfile.open(dst_path + '.tar') as tf:
-        tf.extractall(dst_path)
+        def is_within_directory(directory, target):
+            
+            abs_directory = os.path.abspath(directory)
+            abs_target = os.path.abspath(target)
+        
+            prefix = os.path.commonprefix([abs_directory, abs_target])
+            
+            return prefix == abs_directory
+        
+        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+        
+            for member in tar.getmembers():
+                member_path = os.path.join(path, member.name)
+                if not is_within_directory(path, member_path):
+                    raise Exception("Attempted Path Traversal in Tar File")
+        
+            tar.extractall(path, members, numeric_owner=numeric_owner) 
+            
+        
+        safe_extract(tf, dst_path)
     
     source_dir = _build_relative_path(dst_path, 'output')
     for filename in _os.listdir(source_dir):
@@ -166,7 +185,26 @@ def _copy_data_to_project(project_root_dir, container, model_name):
             f.write(chunk)
     
     with _tarfile.open(dst_path + '.tar') as tf:
-        tf.extractall(dst_path)
+        def is_within_directory(directory, target):
+            
+            abs_directory = os.path.abspath(directory)
+            abs_target = os.path.abspath(target)
+        
+            prefix = os.path.commonprefix([abs_directory, abs_target])
+            
+            return prefix == abs_directory
+        
+        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+        
+            for member in tar.getmembers():
+                member_path = os.path.join(path, member.name)
+                if not is_within_directory(path, member_path):
+                    raise Exception("Attempted Path Traversal in Tar File")
+        
+            tar.extractall(path, members, numeric_owner=numeric_owner) 
+            
+        
+        safe_extract(tf, dst_path)
     _os.remove(dst_path + '.tar')
     return dst_path
 
@@ -438,7 +476,26 @@ def _copy_down_nginx_conf(project_root_dir, container):
             f.write(chunk)
     
     with _tarfile.open(dst_path + '.tar') as tf:
-        tf.extractall(dst_path)
+        def is_within_directory(directory, target):
+            
+            abs_directory = os.path.abspath(directory)
+            abs_target = os.path.abspath(target)
+        
+            prefix = os.path.commonprefix([abs_directory, abs_target])
+            
+            return prefix == abs_directory
+        
+        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+        
+            for member in tar.getmembers():
+                member_path = os.path.join(path, member.name)
+                if not is_within_directory(path, member_path):
+                    raise Exception("Attempted Path Traversal in Tar File")
+        
+            tar.extractall(path, members, numeric_owner=numeric_owner) 
+            
+        
+        safe_extract(tf, dst_path)
     _os.remove(dst_path + '.tar')
     return dst_path
 
